@@ -1,0 +1,255 @@
+---
+.title = "",
+.date = @date("2025-11-30T00:00:00"),
+.author = "Sample Author",
+.layout = "devlog.shtml",
+.draft = false,
+--- 
+[]($section.id('about'))
+
+## [Compression Queue]($section.id("2025-11-30T00:00:00"))
+When dealing with the blocks overlap problem, I can setup 
+a queue from which jobs/blocks are popped. During the packing 
+stage a pointer + start + end is popped onto the queue pointing to a 
+block, we obtain a job then by popping from the queue till no overlap 
+exists. We process the overlap and push back the blocks which are not completed.
+This approach is ok because we limit the packing to `k` many elements 
+to limit cache access. One problem could be tho that we end up with a lot 
+of fractured blocks at the end of the queue that cannot be processed together.
+
+
+
+## Sleeping in spinlock
+Dealing With I/O And Sleeping Processes
+One problem with picking the lowest vruntime to run next arises with
+jobs that have gone to sleep for a long period of time. Imagine two pro-
+cesses, A and B, one of which (A) runs continuously, and the other (B)
+which has gone to sleep for a long period of time (say, 10 seconds). When
+B wakes up, its vruntime will be 10 seconds behind A’s, and thus (if
+we’re not careful), B will now monopolize the CPU for the next 10 sec-
+onds while it catches up, effectively starving A.
+CFS handles this case by altering the vruntime of a job when it wakes
+up. Specifically, CFS sets the vruntime of that job to the minimum value
+found in the tree (remember, the tree only contains running jobs) [B+18].
+In this way, CFS avoids starvation, but not without a cost: jobs that sleep
+for short periods of time frequently do not ever get their fair share of the
+CPU [AC97]
+
+
+## Some papers i want to read
+https://arxiv.org/pdf/2402.18668
+Simple linear attention language models balance the recall-throughput tradeoff
+
+https://sites.cc.gatech.edu/fac/hyesoon/gputhread.pdf
+Effect of Instruction Fetch and Memory Scheduling on GPU Performance
+https://shreyansh26.github.io/post/2025-03-23_gtc25-maximize-memory-bandwidth-part-1/
+https://arxiv.org/pdf/2503.20481
+Analyzing Modern NVIDIA GPU cores
+## Async Copies in Cuda
+Examining the statement from [ https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#asynchronous-copy-from-global-memory-to-shared-memory ]($link)
+```
+CUDA 11.0 introduces an async-copy feature that can be used within
+device code to explicitly manage the asynchronous copying of data
+from global memory to shared memory. This feature enables CUDA kernels 
+to overlap copying data from global to shared memory with computation.
+It also avoids an intermediary register file access traditionally present
+between the global memory read and the shared memory write.
+```
+Specifically `This feature enables CUDA kernels to overlap copying data from global to shared memory with computation.`
+this statement suggests that with traditional synchronous copies such as:
+```
+shared[tid] = global[tid]
+```
+computations cannot overlap. This is misleading in the sense that infact the 
+warp will step through instructions for as long as it doesn't use a register 
+which will force the warp to be blocked. 
+
+Asynchronous copies avoid this register write, thus theoretically keeping registers 
+free and allowing this warp to proceed with computations.
+[https://forums.developer.nvidia.com/t/the-difference-between-asynchronous-copy-and-synchronous-copy/311861/7]
+
+Often times there is no productive work left to do for a warp after issuing an async load anyway
+which means it is stuck waiting for new data anyway and synchronizes on a barrier, in that case the only 
+thing that gets hidden effectively is the mov instructions after to store the register data to shared memory.
+
+This makes me wonder what the actual effects of a consumer producer split of warps is, if we use async instructions.
+We will effectivley only use a single thread to issue the load anyway and the consumer warp will not do anything else after.
+Wouldnt 
+
+
+Once a thread block is launched on a multiprocessor (SM), all of its warps are resident until their execution finishes. Thus a new block is not launched on an SM until there is sufficient number of free registers for all warps of the new block, and until there is enough free shared memory for the new block. 
+[https://en.wikipedia.org/wiki/Thread_block_(CUDA_programming)]
+
+### How cpu out of order works 
+https://en.wikipedia.org/wiki/Tomasulo%27s_algorithm
+https://ca.wikipedia.org/wiki/Reservation_station
+
+
+
+
+## __syncwarp()
+`__syncwarp()` was introduced in Volta as a result of the new Independent Thread Scheduling,
+pre Volta had one shared `PC` (Program Counter) and one shared Stack per warp. Diverging 
+statements such as 
+```
+if (threadIdx.x < 4){
+    A; 
+    B;
+}
+else {
+    X;
+    Y;
+}
+Z;
+```
+were forced to execute as: 
+```
+      X->Y  |Z
+A ->B       |Z
+```
+This means threads reconverge when the program counter reaches the location of `Z`,
+this is problematic if `Z` contained a call necessary to complete the divergence, 
+consider the example of locking a mutex, using atomics all but one thread in a warp would 
+see the mutex as unlocked and subsequently lock it, while the other threads would see a locked 
+mutex and wait. So if `Z` was the call to unlock the mutex, then this would permanently deadlock 
+this warp.
+
+
+With Volta each thread within a warp maintains their own program counter and stack, allowing 
+interleaved execution of diverging threads: 
+```
+    X    Y         Z
+A     B       Z
+```
+`Z` is not an implicit reconvergence point anymore, although the scheduler 
+may identify it is safe to reconvergen on it anyway. Programmers 
+can now use `__syncwarp()` to explicitly mark `PC` value at which 
+warps are forced to reconverge, this means that 
+```
+if (threadIdx.x < 4){
+    A; 
+    B;
+}
+else {
+    X;
+    Y;
+}
+Z;
+__syncwarp()
+```
+will force synchronization after `Z`, this is the correct behavior for the mutex example. 
+If we know it is safe to execute `Z` as one, then we can swap their order 
+```
+__syncwarp()
+Z;
+```
+yielding the following execution : 
+```
+    X    Y    | Z
+A     B       | Z
+```
+Although when using warp level primitives I think that synchronization behaviour 
+is not implied in the sense that while all threads that can reach `__syncwarp()`
+will be in sync at that point, this does not necessairly imply that they will 
+be in sync after. [[https://developer.nvidia.com/blog/using-cuda-warp-level-primitives/]]
+```
+Calling the new __syncwarp() primitive at line 10 before __ballot(), as illustrated in Listing 11, does not fix the problem either. This is again implicit warp-synchronous programming. It assumes that threads in the same warp that are once synchronized will stay synchronized until the next thread-divergent branch. Although it is often true, it is not guaranteed in the CUDA programming model.
+```
+
+Effectively after Volta (or only on Volta ? Should be all after. [[https://docs.nvidia.com/cuda/hopper-compatibility-guide/]] ) no implicit 
+assumptions should be made about where warps may diverge since they do not share a program counter. This means that threads even within a warp 
+may race ahead even in situations where this is not expected. This means that code such as: 
+```
+      volatile __shared__ int data[64];
+      data[threadIdx.x] = in[threadIdx.x];
+
+      data[threadIdx.x] += data[threadIdx.x + 16];
+      data[threadIdx.x] += data[threadIdx.x + 8];
+      data[threadIdx.x] += data[threadIdx.x + 4];
+      data[threadIdx.x] += data[threadIdx.x + 2];
+      data[threadIdx.x] += data[threadIdx.x + 1];
+
+      //data[0] should be sum of in[0..31]
+       out[threadIdx.x] = data[0];
+```
+Is wrong on two levels, first we assume that the warp indeed has proceeded in lockstep until `out[threadIdx.x] = data[0]` which may not be true. 
+And second we make an assumption about the memory ordering, the cuda programmign modle assumes 
+a weakly ordered memory model, this means no Release or Acquire semantics for loads and stores.
+```
+                    Release
+Acquire #LoadLoad   #LoadStore
+        #StoreLoad  #StoreStore
+```
+[[https://preshing.com/20120913/acquire-and-release-semantics/]]
+`#XY` means the reordering of `Y` before `X`, Acquire semantics apply to load operations only 
+and imply that no memory operation after may be re ordered to happen before it, Release does the same 
+but in the opposite direction, no load or store before the release may happen to appear after the release.
+Acquire and Release semantics can be implemented using memory barriers, which prevent reordering accross it and force store-buffers to be flushed
+See: [[http://www.rdrop.com/users/paulmck/scalability/paper/whymb.2010.07.23a.pdf]] or `memory-barriers.txt` in the linux kernel documentation.
+
+
+In cuda, memory fences are provided to enforce a sequentially-consistent ordering on memory 
+accesses. `__threadfence_block()` enforces that all writes made by the calling thread prior to the fence 
+are observedy by all threads in the block of the calling thread as occuring before all writes to all memory made by the 
+calling thread after the call to `__threadfence_block()`. 
+
+And: All reads from memory made by the calling thread prior to the call to `__threadfence_block()` are ordered before 
+all reads from memory made by the calling thread after the call to `__threadfence_block()` 
+
+This apparently does not prevent `#StoreLoad` reordering, although I guess that might not be a problem here. 
+Furthermore I wonder if we really cannot rely on program order, I guess what voltas execution model implies 
+is that while on a thread level we can rely on program order, we cannot rely on it on a warp level anymore.
+On a thread level there will be no out-of-order processing, but on a warp level that may as well be the case.
+
+```
+GPU vs CPU
+Unlike a CPU core which can occupy 4mm² a CUDA core takes up less than 0.1mm² (at the latest 4NP node), a much smaller die area.
+Because of this, the GPU cores do not have out-of-order execution, cache predictions, prefetching of data etc.
+Whatever order the compiler puts the instructions in is the order in which they get executed.
+``` From [[https://stackoverflow.com/questions/79429440/cuda-memory-model-why-acquire-fence-is-not-needed-to-prevent-load-load-reorderi]] seems to suggest 
+that we can rely on program order in some sense, this seems to conflict with the volta execution model.
+
+https://stackoverflow.com/questions/69606996/cuda-lane-id-vs-threadidx-x-based-computation
+Here another post about this.
+
+
+Although the semantics of `__threadfence_block` do not seems to prevent compiler reordering of `#StoreLoad` at all, 
+why is: 
+```
+smem[y1][x1] = val;
+__syncwarp();
+val = smem[y2][x2];
+```
+valid code? There is seemingly no connection between this write and read from shared memory.
+Looking at the ptx it wont reorder them and `__syncwarp` guarantees sequential ordering around it, i.e. 
+is a full blown barrier.
+
+I guess [[https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-membar]]
+clears this up, membar actively prevents reordering of any memory operations around it, i.e. is a full blown fence.
+
+
+```
+8.9. Ordering of memory operations
+
+The sequence of operations performed by each thread is captured as program order while memory synchronization across threads is captured as causality order. The visibility of the side-effects of memory operations to other memory operations is captured as communication order. The memory consistency model defines contradictions that are disallowed between communication order on the one hand, and causality order and program order on the other.
+8.9.1. Program Order
+
+The program order relates all operations performed by a thread to the order in which a sequential processor will execute instructions in the corresponding PTX source. It is a transitive relation that forms a total order over the operations performed by the thread, but does not relate operations from different threads.
+```
+https://forums.developer.nvidia.com/t/preventing-ptxas-from-reordering-instructions/28682/13
+
+
+`bar.arrive $barnum $threadcount`, bar.arrive can be used to reset a barrier, and thus 
+threadcount indicates how many threads the new barrier must wait on.
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,20 @@
+---
+.title = "Understanding GPU programming from a CPU perspective",
+.date = @date("2025-11-29T00:00:00"),
+.author = "Janik ",
+.layout = "post.shtml",
+.draft = true,
+--- 
+Try to explain different concepts from GPU programming in CPU 
+terms, by using one overarching abstraction of thread context. 
+
+
+For example you could simulate the processing of multiple threads 
+running at the same time on one cpu core by reducing the context 
+of each thread down to a minimum of registers. Broadcasting loads 
+are modelled as a load to one register. Coalescing loads 
+are modelled through simd loads. The threads in this context 
+become very virtual, but by trying to manage all this on one 
+cpu core we can perhaps model why Coalescing is so important 
+on the GPU considering the number of load instructions we'd have to 
+issue otherwise. 

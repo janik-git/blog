@@ -1,0 +1,150 @@
+---
+.title = "Leetcodeing with zero DSA knowledge (1)",
+.date = @date("2025-11-29T00:00:00"),
+.author = "Janik ",
+.layout = "post.shtml",
+.draft = false,
+--- 
+This is the start of a series where I go through leetcode problems trying 
+to come up with a solution while not knowing anything about DSA.
+The advantage of not knowing anything about complex data structures, is that 
+either I come with a clever mathematical solution, or my solution is backed by an array.
+
+## 2919. Minimum Increment Operations to Make Array Beautiful
+The problem description is as follows:
+
+> You are given a 0-indexed integer array `nums` having length `n` and an integer `k`.
+
+> You can perform the following increment operation any number of times (including zero):
+Choose an index `i` in the range `[0, n - 1]`, and increase `nums[i]` by 1.
+
+> An array is considered beautiful if, for any subarray with a size of 3 or more, its maximum element is greater than or equal to `k`.
+
+> Return an integer denoting the minimum number of increment operations needed to make nums beautiful.
+A subarray is a contiguous non-empty sequence of elements within an array.
+
+Here is an example:
+```
+Input: nums = [2,3,0,0,2], k = 4
+Output: 3
+```
+
+First thing we note, is that a we don't care about any subwindows larger than three,
+because any subwindow larger than that will contain a subwindow of length three.
+
+Knowing that, we begin with a naive attempt:
+Simply iterate over all subwindows of length three and increment 
+the maximum element until it is equal to `k`.
+[Naive Solution]($code.asset('naive.c'))
+
+We can test this on our example, and see that it correctly passes. Submitting 
+this and we quickly come across a problem: 
+### Wrong Answer:
+```
+Input: nums = [43,31,14,4], k = 73
+Output: 72
+Expected: 42
+```
+The naive solution will increment `43` and then then increment `31`:
+```
+73 - 43 + 73 - 31 = 72 
+```
+
+What we are trying to find is the process of decisions `(w_i)_(i<= subarrays)`  
+which yields the minimum cost. In every subarray `i` we have to decide 
+whether to increment `i_0,i_1,i_2`, we notice that icnrementing `i_1` 
+means that we get zero cost in `(i+1)` and incrementing `i_2` results 
+in zero cost for windows `(i+1)` and `(i+2)`, so we only increment 
+`i_0` if `cost^i_0 < min_cost^(i+1) + min_cost^(i+2) ` and we only 
+increment `i_1` if `cost^i_1 < min_cost(i+2)`. 
+
+Thinking about this might make you worry about how to determine `min_cost^(i+1)` 
+and `min_cost^(i+2)`, what if the optimal choice in `i+2` is to increment `(i+2)_2`
+i.e. the last index in the subarray which we have no knowledge of.
+
+Well the thing is that whenever we increment `i_1` or `i_2`, the minimum cost 
+in `i+1` or `i+1` and `i+2` instantly becomes zero. So in reality 
+we don't need to track the costs for these states since it is implicitly zero.
+
+So all we have to do is start from the last subarray and perform one step 
+of the naive method: 
+```
+Input: nums = [43,31,14,4], k = 73
+subarrays = [43,31,14],[31,14,4]
+
+costs_1 = [min(73-31,73-14,73-4)] = [42]
+costs_0 = [73-43 + 42 + 0,73-31+0,73-4] = [72,42,69]
+```
+We can get the correct solution by grabbin the minimum. Lets try with a larger example:
+```
+Input: nums = [43,31,14,4,24,52,104], k = 73
+subarray = [43,31,14],[31,14,4],[14,4,24],[4,24,52],[24,52,104]
+ 
+costs = [49,21,0] ; [24,52,104]
+costs = [69 + min(49,21,0),49, 21] ; [4,24,52]
+costs = [59 + min(69 + min(49,21,0), 49 , 21),69 + min(49,21,0),49] ; [14,4,24]
+```
+Let us reduce: 
+```
+costs = [49,21,0] ; [24,52,104]
+costs = [69 ,49, 21] ; [4,24,52]
+costs = [80,69,49] ; [14,4,24]
+costs = [91,80,69] ; [31,14,4]
+costs = [99,91,80 ] ; [43,31,14]
+```
+So the answer is 80, looking at the costs array we can see how the costs 
+propegate through the array, meaning we only have to maintain a three variable 
+state.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

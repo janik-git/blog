@@ -1,0 +1,134 @@
+---
+.title = "Simple Threadpool",
+.date = @date("2025-11-29T00:00:00"),
+.author = "Janik ",
+.layout = "post.shtml",
+.draft = false,
+--- 
+The goal is to write a simple threadpool in `C` onto which we 
+can schedule arbitrary tasks. Our high level functionality should look 
+something like this:
+```c
+# Distribute tasks among workers
+schedule(tasks):
+
+workerThread():
+    while not shutdown:
+    if (task): 
+        task.run()
+    else:
+        wait()
+```
+We are going to work based off some baseline assumption:
+>[]($block.attrs('ass'))
+>(Assumption One-to-One):
+>On a system with `N` cores, the threadpool has at most `N` workers and at most `N`
+>tasks will be scheduled at once.
+
+This allows us to ignore any complex run queue management and focus on 
+understanding some base level concepts. Tasks can be simply defined 
+as two opaque pointers to a `context` and a `run` function: 
+```c
+struct Task {
+    void *context;
+    void (*run)(void *);
+}
+```
+Our workers can consist of a simple thread handle and an optional task pointer:
+```c
+struct Worker {
+    pthread_t id;
+    Task *task;
+}
+Lets try to use this simple interface to make our threadpool, which we simply 
+model as an array of workers, do some work:
+```c
+void *workerThread(void *worker_opaque){
+    Worker *worker = (Worker *)worker_opaque;
+    while (worker->task == NULL){
+        // just spin
+        asm volatile("NOP\n\t":::);
+    }
+    Task *task = worker->task; 
+    task->run(task->context);
+}
+
+void printTask(void *context) {
+        char *to_print = (char *)context;
+
+        printf("%s\n", to_print);
+}
+
+int main(){
+    Worker pool[4] = {0};
+    Task tasks[4] = {0};
+    for (int i = 0; i < 2; ++i) {
+            tasks[i].context = "I am thread";
+            tasks[i].run = printTask;
+    }
+
+    for (int i = 0; i < 4; ++i) {
+            int res = pthread_create(&thread_pool[i].id, NULL, workerThread,
+                                     &thread_pool[i]);
+            if (res) { printf("Something went wrong \n"; exit(1); }
+    }
+    for (int i = 0; i < 4; ++i) {
+            addTask(&tasks[i], &thread_pool[i]);
+    }
+    for (int i = 0; i < 4; ++i) {
+            pthread_join(thread_pool[i].id, NULL);
+    }
+}
+```
+We run it a couple times anddddd it doesn't work, well it does work sometimes.
+Othertimes we will freeze for seemingly no reason, i.e. one of our workers is stuck in his 
+spin loop. That shouldnt be possible since we definetly assign work to each thread, let us 
+take a look at what assembly `gcc` generates for us:
+```asm
+00000000004012c0 <workerThread>:
+  4012c0:       48 8b 47 08             mov    0x8(%rdi),%rax
+  4012c4:       48 85 c0                test   %rax,%rax
+  4012c7:       75 0f                   jne    4012d8 <workerThread+0x18> 
+  4012c9:       0f 1f 80 00 00 00 00    nopl   0x0(%rax)
+  4012d0:       90                      nop
+  4012d1:       eb fd                   jmp    4012d0 <workerThread+0x10> <- thats not good
+    ...
+```
+Our compiler is so smart, it simply predicts that `task` will forever be `NULL` and 
+the only time our code will actually work correctly is if we manage to add our tasks 
+before any of our workers manages to reach the loop. To fix this, lets force the compiler 
+to actually reload the task by using `READ_ONCE`:
+```c
+#define READ_ONCE(x) (*(volatile typeof(x) *)&(x))
+
+void *workerThread(void *worker_opaque){
+    Worker *worker = (Worker *)worker_opaque;
+    while (READ_ONCE(worker->task) == NULL){
+        // just spin
+        asm volatile("NOP\n\t":::);
+    }
+    Task *task = worker->task; 
+    task->run(task->context);
+}
+```
+Checking the assembly to make sure it works: 
+```
+  4012d0:       90                      nop
+  4012d1:       48 8b 47 08             mov    0x8(%rdi),%rax
+  4012d5:       48 85 c0                test   %rax,%rax
+  4012d8:       74 f6                   je     4012d0 <workerThread+0x10> <- much better
+```
+Using `READ_ONCE` forces the `gcc` to actually load the value from memory on every iteration, preventing 
+it from caching it into a register. This leads to one core principle when writing multi threaded code:
+>[]($block.attrs('theorem'))
+>(Principle) Compilers generate code assuming a single threaded execution model.
+
+This principle means that sometimes the compiler will do things that increase performance 
+in single threaded contexts and ruin code in multi threaded ones.
+
+Generally, using control dependencies as synchronizations between threads requires extra care 
+to make sure that the compiler isn't trying to be smart, because at the end of the day 
+it has no concept of them, so it our responsiblity to make sure ordering is maintained. 
+
+
+
