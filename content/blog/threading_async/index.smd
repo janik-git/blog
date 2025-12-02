@@ -151,9 +151,18 @@ Whether that is the *tokio* thread pool checking for new tasks, or the linux sch
 for new threads to schedule, at some layer something is spinning.
 
 >[]($block.attrs('note'))
->That comment about the linux scheduler is best case a gross simplification,
->and worst case completely wrong. Whether it is truly the scheduler 
->spinning or something else does not matter to the point being made.
+>The exact mechanics of how the scheduler works doesn't really matter for this point. 
+>One can take a look at `linux/kernel/sched/idle.c` and find:
+>```c 
+>void cpu_startup_entry(enum cpuhp_state state)
+>{
+>	current->flags |= PF_IDLE;
+>	arch_cpu_idle_prepare();
+>	cpuhp_online_idle(state);
+>	while (1)
+>		do_idle();
+>}
+>```
 
 There is no magic working behind the scenes, that somehow knows when it can do work and just 
 turns itself off otherwise. At some layer there is at least one component that has to occasionally 
