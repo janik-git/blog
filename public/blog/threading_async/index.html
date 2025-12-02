@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+	<head id="head">
+		<meta charset="utf-8">
+		<meta name="viewport" content="initial-scale=1">
+		<title>Personal blog</title>
+		<link type="text/css" rel="stylesheet" href="/blog/style.css">
+		<link type="text/css" rel="stylesheet" href="/blog/highlight.css">
+		<!-- mathtex -->
+		<link type="text/css" rel="stylesheet" href="/blog/Temml-Local.css">
+		<script defer src="/blog/temml.min.js"></script>
+		<script defer src="/blog/render-mathtex.js"></script>
+		<!-- /mathtex -->
+		
+	<style>
+		#prev-next {
+			display: flex;
+			flex-direction: row;
+			justify-content: space-between;
+			margin-top: 40px;
+		}
+		
+		figure {
+			align-self: center;
+			font-style: italic;
+		}
+		
+		.post {
+			display:flex;
+			flex-direction: column;
+		}
+	</style>
+
+	</head>
+	<body id="body">
+		<h1 class="site-title">Personal blog</h1>
+		<nav>
+			<a href="/blog/">Home</a>
+			&nbsp; • &nbsp;
+			<a href="/blog/about/">About</a>
+			&nbsp; • &nbsp;
+			<a href="/blog/blog/">Blog</a>
+			
+				&nbsp; • &nbsp;
+				<a href="/blog/devlog/29_11_2025/">Devlog</a>
+			
+		</nav>
+		
+	<h1>A mental model for understanding parallel concepts</h1>
+	<div class="post"><p>The biggest issue I faced when trying to understand asynchronous code, was how it was possible for a function to stop/yield when encountering an <code>await</code> on a future that couldn’t progress.</p><p>Conceptually I understood that an <code>await fn</code> gets translated into some state machine and it somehow manages to resume by proceeding through the steps. But that is more accepting that it somehow works, not true understanding where I could implement it myself.</p><p>The first moment of real understanding came when researching how to do something similar in C and I came across <a href="https://en.wikipedia.org/wiki/Duff%27s_device" target="_blank">Duff’s device</a>.</p><pre><code class="c">
+    register <span class="type">n</span> <span class="operator">=</span> (<span class="constant variable">count</span> <span class="operator">+</span> <span class="number">7</span>) / <span class="number">8</span><span class="delimiter">;</span>
+    <span class="keyword">switch</span> (<span class="constant variable">count</span> % <span class="number">8</span>) 
+    {
+    <span class="keyword">case</span> <span class="number">0</span>: <span class="keyword">do</span> { <span class="operator">*</span><span class="constant variable">to</span> <span class="operator">=</span> <span class="operator">*</span><span class="constant variable">from</span><span class="operator">++</span><span class="delimiter">;</span>
+    <span class="keyword">case</span> <span class="number">7</span>:      <span class="operator">*</span><span class="constant variable">to</span> <span class="operator">=</span> <span class="operator">*</span><span class="constant variable">from</span><span class="operator">++</span><span class="delimiter">;</span>
+    <span class="keyword">case</span> <span class="number">6</span>:      <span class="operator">*</span><span class="constant variable">to</span> <span class="operator">=</span> <span class="operator">*</span><span class="constant variable">from</span><span class="operator">++</span><span class="delimiter">;</span>
+    <span class="keyword">case</span> <span class="number">5</span>:      <span class="operator">*</span><span class="constant variable">to</span> <span class="operator">=</span> <span class="operator">*</span><span class="constant variable">from</span><span class="operator">++</span><span class="delimiter">;</span>
+    <span class="keyword">case</span> <span class="number">4</span>:      <span class="operator">*</span><span class="constant variable">to</span> <span class="operator">=</span> <span class="operator">*</span><span class="constant variable">from</span><span class="operator">++</span><span class="delimiter">;</span>
+    <span class="keyword">case</span> <span class="number">3</span>:      <span class="operator">*</span><span class="constant variable">to</span> <span class="operator">=</span> <span class="operator">*</span><span class="constant variable">from</span><span class="operator">++</span><span class="delimiter">;</span>
+    <span class="keyword">case</span> <span class="number">2</span>:      <span class="operator">*</span><span class="constant variable">to</span> <span class="operator">=</span> <span class="operator">*</span><span class="constant variable">from</span><span class="operator">++</span><span class="delimiter">;</span>
+    <span class="keyword">case</span> <span class="number">1</span>:      <span class="operator">*</span><span class="constant variable">to</span> <span class="operator">=</span> <span class="operator">*</span><span class="constant variable">from</span><span class="operator">++</span><span class="delimiter">;</span>  
+            } <span class="keyword">while</span> (<span class="operator">--</span><span class="constant variable">n</span> <span class="operator">&gt;</span> <span class="number">0</span>)<span class="delimiter">;</span>
+    }
+</code></pre>
+<p>Whenever <code>count</code> is not a multiple of 8, it simply jumps to the correct start of the iteration to handle any potential remainder and otherwise proceeds as normal.</p><p>Duff’s device leverages the fact that in C switch statements the following properties hold:</p><ul><li>A case label can prefix any sub-statement within the switches body, as long as the body as a whole is a valid statement.</li><li>Execution will fall through the case statements until it encounters a break or the switch ends.</li></ul><p>Before proceeding, let a coroutine be any function that can be suspended and resumed. Using Duff’s device we can then implement a simple coroutine as follows:</p><pre><code class="c"><span class="type">int</span> <span class="constant variable function">co</span>(){
+    <span class="keyword">static</span> <span class="type">int</span> <span class="constant variable">i</span>,<span class="constant variable">state</span> <span class="operator">=</span> <span class="number">0</span><span class="delimiter">;</span>
+    <span class="keyword">switch</span> (<span class="constant variable">state</span>) {
+        <span class="keyword">case</span> <span class="number">0</span>:
+        <span class="keyword">for</span> (<span class="constant variable">i</span> <span class="operator">=</span> <span class="number">0</span><span class="delimiter">;</span> <span class="constant variable">i</span> <span class="operator">&lt;</span> <span class="number">10</span><span class="delimiter">;</span> <span class="operator">++</span><span class="constant variable">i</span>){
+            <span class="constant variable">state</span> <span class="operator">=</span> <span class="number">1</span><span class="delimiter">;</span>
+            <span class="keyword">return</span> <span class="constant variable">i</span><span class="delimiter">;</span>
+            <span class="keyword">case</span> <span class="number">1</span>:<span class="delimiter">;</span>
+        }
+    }
+}
+</code></pre>
+<p>Source:<a href="https://www.chiark.greenend.org.uk/~sgtatham/coroutines.html" target="_blank">https://www.chiark.greenend.org.uk/~sgtatham/coroutines.html</a></p><p>What you should notice, is that if you want some local variable to survive the suspension, then it has to be explicitly saved. In the example above we simply declared it as static, but in practice we would save any local state inside of a context struct and pass it to the coroutine:</p><pre><code class="c"><span class="keyword">struct</span> <span class="type">Context</span><span class="delimiter">;</span> 
+<span class="comment">// Access persitent variables with ctx-&gt;var</span>
+<span class="type">int</span> <span class="constant variable function">co</span>(<span class="type">Context</span> <span class="operator">*</span><span class="constant variable">ctx</span>)<span class="delimiter">;</span>
+</code></pre>
+<h1>Context</h1><p>Context to me is also the most important attribute to distinguish and understand different parallel constructs. By looking at what context they require to function, we can easily distinguish between different types.</p><h2>Stackfull vs Stackless</h2><p>When talking about coroutines people generally differentiate between stackfull-coroutines (fibers) and stackless-coroutines. Without going into any pros or cons, we can reduce their differences to the fact that a stackfull-coroutines will include a stack in its context:</p><pre><code class="c"><span class="keyword">struct</span> <span class="type">Context</span> {
+    <span class="type">void</span> <span class="operator">*</span><span class="property">stack</span><span class="delimiter">;</span>
+    <span class="comment">// rest</span>
+}<span class="delimiter">;</span>
+</code></pre>
+<p>while a stackless coroutine won’t. This difference is what makes stackless coroutines cheaper compared to stackfull ones since they require less space.</p><h2>Threads vs. Processes</h2><p>Once again to distinguish threads from processes we can reduce the two to their differences in <strong>context</strong>. A process for example has its own virtual address space, while threads within a process share a common one. This mean we don’t have to save any information relating to that, such as the page table, when swapping between threads within a process.</p><div class="block note"><p> The exact context used for processes and threads can be found by taking a look into <code>include/linux/sched.h</code> and finding the <code>task_struct</code>.</p><p>Processor specific information, like the <code>thread_struct</code> can be found in <code>arch/*/include/asm/processor.h</code>.</p></div><h2>GPU Threads vs. CPU Threads</h2><p>Why is it that a GPU can run thousands of threads at the same time, while a CPU is limited to a small few? One core difference is in where they store the context required to run each thread, GPU’s feature large register files into which thread context is saved. Switching between different threads is then as simple as pointing to the relevant registers and much faster than the process of loading them from memory like on the CPU.</p><p>Another obvious difference is the number of execution units which allow for many more instructions to be processed at the same time. But if one wanted to, they could also run multiple “threads” on one CPU core at the same time by:</p><ul><li>Sharing a stack among all “threads”.</li><li>And limiting the context of each “thread” to one or two registers.</li></ul><p>It is simply a matter of perspective whether</p><pre><code class="c">
+<span class="type">int</span> <span class="constant variable">acc1</span> <span class="operator">=</span> <span class="number">0</span><span class="delimiter">;</span>
+<span class="type">int</span> <span class="constant variable">acc2</span> <span class="operator">=</span> <span class="number">0</span><span class="delimiter">;</span>
+<span class="keyword">for</span> (<span class="type">int</span> <span class="constant variable">i</span> <span class="operator">=</span> <span class="number">0</span> <span class="delimiter">;</span> <span class="constant variable">i</span> <span class="operator">&lt;</span> <span class="number">2</span><span class="operator">*</span><span class="constant variable">n</span> <span class="delimiter">;</span> <span class="constant variable">i</span><span class="operator">+=</span> <span class="number">2</span>){
+    <span class="constant variable">acc1</span> <span class="operator">+=</span> <span class="constant variable">A</span>[<span class="constant variable">i</span>]<span class="delimiter">;</span>
+    <span class="constant variable">acc2</span> <span class="operator">+=</span> <span class="constant variable">A</span>[<span class="constant variable">i</span><span class="operator">+</span><span class="number">1</span>]<span class="delimiter">;</span>
+}
+</code></pre>
+<p>is one thread performing two adds at a time, or if we have two “threads” each with one register <code>acc</code> performing one add at a time.</p><p>I know this is really stretching the definition of what a thread is hence the quotes, but I believe the point I am trying to make is clear.</p><p>To summarize:</p><div class="block theorem"><p> Parallel constructs can be differentiated by examining what type of context they need to execute, and their functionality is limited by the context they have access to.</p></div><h1>Spinning</h1><p>The next part that was never quite clear to me, is what is the <code>async</code> function even yielding to. A lot of <code>async</code> implementations hide the underlying mechanism of how <code>async</code> functions get run/scheduled. In rust for example you import tokio, declare your new async main and somehow it all works out.</p><p>The reality, is that what is abstracted away from you is some thread pool / scheduler that is responsible for picking tasks to run, assigning them to some underlying kernel thread and if necessary putting them back into the queue if the task didn’t run to completion.</p><p>And without spinning, nothing of it would be possible. What I mean when I say that, is that as long as you keep peeling away layer of abstraction, you eventually reach an endless loop that will spin waiting for some condition. Whether that is the <em>tokio</em> thread pool checking for new tasks, or the linux scheduler looking for new threads to schedule, at some layer something is spinning.</p><div class="block note"><p> The exact mechanics of how the scheduler works doesn’t really matter for this point. One can take a look at <code>linux/kernel/sched/idle.c</code> and find:</p><pre><code class="c"><span class="type">void</span> <span class="constant variable function">cpu_startup_entry</span>(<span class="keyword">enum</span> <span class="type">cpuhp_state</span> <span class="constant variable">state</span>)
+{
+  <span class="constant variable">current</span><span class="operator">-&gt;</span><span class="property">flags</span> |= <span class="constant variable">PF_IDLE</span><span class="delimiter">;</span>
+  <span class="constant variable function">arch_cpu_idle_prepare</span>()<span class="delimiter">;</span>
+  <span class="constant variable function">cpuhp_online_idle</span>(<span class="constant variable">state</span>)<span class="delimiter">;</span>
+  <span class="keyword">while</span> (<span class="number">1</span>)
+  	<span class="constant variable function">do_idle</span>()<span class="delimiter">;</span>
+}
+</code></pre>
+</div><p>There is no magic working behind the scenes, that somehow knows when it can do work and just turns itself off otherwise. At some layer there is at least one component that has to occasionally check whether there is something to do.</p><h1>What this all means</h1><p>We can combine the two concepts of <strong>context</strong> and <strong>spinning</strong> and cobble together a simple async runtime. We use a general task type made up of an opaque context and run function, make them available for scheduling by putting them onto a central array and just spin waiting for new tasks.</p><pre><code class="c"><span class="keyword">typedef</span> <span class="keyword">struct</span> <span class="type">Task</span> {
+    <span class="comment">// Context required by the task</span>
+    <span class="type">void</span> <span class="operator">*</span><span class="property">context</span><span class="delimiter">;</span> 
+    <span class="comment">// Returns 1 if it needs to be scheduled again and otherwise 0 </span>
+    <span class="type">int</span> (<span class="operator">*</span><span class="property">run</span>)(<span class="type">void</span> <span class="operator">*</span>)<span class="delimiter">;</span>
+} <span class="type">Task</span><span class="delimiter">;</span>
+
+<span class="type">int</span> <span class="constant variable function">main</span>(){
+    <span class="comment">// Some task queue with some fixed capacity</span>
+    <span class="type">TaskQueue</span> <span class="constant variable">task_list</span><span class="delimiter">;</span> 
+    <span class="keyword">while</span> (<span class="number">1</span>){
+        <span class="keyword">if</span> (!<span class="constant variable function">queueEmpty</span>(<span class="operator">&amp;</span><span class="constant variable">task_list</span>)){
+            <span class="type">Task</span> <span class="constant variable">task</span> <span class="operator">=</span> <span class="constant variable function">queuePop</span>(<span class="operator">&amp;</span><span class="constant variable">task_list</span>)<span class="delimiter">;</span>
+            <span class="type">int</span> <span class="constant variable">completed</span> <span class="operator">=</span> <span class="constant variable">task</span><span class="delimiter">.</span><span class="property function">run</span>(<span class="constant variable">task</span><span class="delimiter">.</span><span class="property">context</span>)<span class="delimiter">;</span>
+            <span class="keyword">if</span> (!<span class="constant variable">completed</span> <span class="operator">&amp;&amp;</span> !<span class="constant variable function">queueFull</span>(<span class="operator">&amp;</span><span class="constant variable">task_list</span>)){
+                <span class="constant variable function">queuePush</span>(<span class="operator">&amp;</span><span class="constant variable">task_list</span>,<span class="constant variable">task</span>)<span class="delimiter">;</span>
+            }
+        }
+    } 
+}
+</code></pre>
+<p>This shouldnt be considered a working example, but if you start looking at real implementations of thread pools, you will find some semblance of the above. You can consider taking a look at <a href="https://github.com/kprotty/zap" target="_blank">https://github.com/kprotty/zap</a> which even comes with it’s own blog post explaining how it works.</p><h2>References:</h2><ul><li><a href="https://en.wikipedia.org/wiki/Duff%27s_device" target="_blank">https://en.wikipedia.org/wiki/Duff%27s_device</a></li><li><a href="https://www.chiark.greenend.org.uk/~sgtatham/coroutines.html" target="_blank">https://www.chiark.greenend.org.uk/~sgtatham/coroutines.html</a></li><li><a href="https://github.com/kprotty/zap" target="_blank">https://github.com/kprotty/zap</a></li></ul></div>
+	<div id="prev-next">
+		<div></div>
+		<div></div>
+	</div>
+<div id="footnotes"></div>
+
+		<!-- <footer> -->
+		<!-- 	<hr> -->
+		<!-- 	<h5>SITE UNDER CONSTRUCTION</h5> -->
+		<!-- 	<img src="$site.asset('under-construction.gif').link()" width=90> -->
+		<!-- </footer> -->
+	</body>
+</html>

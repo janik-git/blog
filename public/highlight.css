@@ -1,0 +1,191 @@
+/* Unified code styling based on yoru theme colors */
+:root {
+  /* yoru.lua colors mapped to CSS variables */
+  --text: #edeff0;           /* theme.base05 - default text */
+  --comment: #3e4041;        /* base30.grey_fg - comments */
+  --string: #82c29c;         /* theme.base0B - strings */
+  --keyword: #c58cec;        /* theme.base0E - keywords */
+  --function: #709ad2;       /* theme.base0D - functions */
+  --variable: #edeff0;       /* theme.base05 - variables */
+  --constant: #ecd28b;       /* theme.base09 - constants */
+  --type: #e79881;           /* theme.base0A - types */
+  --number: #ecd28b;         /* theme.base09 - numbers */
+  --operator: #edeff0;       /* theme.base05 - operators */
+  --punctuation: #e8646a;    /* theme.base0F - punctuation/brackets */
+  --attribute: #e8646a;      /* theme.base0F - attributes */
+  --tag: #e79881;            /* theme.base0A - tags */
+  --builtin: #6791c9;        /* theme.base0C - builtins */
+  --macro: #f26e74;          /* theme.base08 - macros */
+}
+
+pre {
+  background: #161819 !important;
+  border: 1px solid #404040;
+  border-radius: 6px;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+code {
+  font-family: "BerkeleyMono Nerd Font", "CMU Bright", monospace;
+  background: #161819;
+  color: var(--text);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+
+/* Inline code */
+p code, li code {
+  /* background: #2d2d2d; */
+  color: var(--text);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+
+/* Comments */
+code .comment {
+  color: var(--comment);
+  font-style: italic;
+}
+
+/* Strings */
+code .string {
+  color: var(--string);
+}
+
+/* Keywords */
+code .keyword,
+code .keyword.function,
+code .keyword.return,
+code .keyword.operator,
+code .keyword.conditional,
+code .keyword.repeat,
+code .keyword.exception,
+code .keyword.import {
+  color: var(--keyword);
+}
+
+/* Functions */
+code .function,
+code .function.builtin,
+code .function.macro,
+code .function.call,
+code .function.method,
+code .constructor {
+  color: var(--function);
+}
+
+/* Variables and parameters */
+code.c .variable,
+code .variable.builtin,
+code .variable.parameter,
+code .variable.member,
+code .parameter,
+code .field,
+code .property,
+code .reference {
+  color: var(--variable);
+}
+
+/* Constants */
+code .constant,
+code .constant.builtin,
+code .constant.macro,
+code .number,
+code .number.float {
+  color: var(--constant);
+}
+
+/* Types */
+code .type,
+code .type.builtin,
+code .module,
+code .module.builtin,
+code .class,
+code .interface,
+code .struct {
+  color: var(--type);
+}
+
+/* Operators and punctuation */
+code .operator,
+code .punctuation,
+code .punctuation.bracket,
+code .punctuation.delimiter,
+code .symbol {
+  color: var(--punctuation);
+}
+
+/* Attributes and tags */
+code .attribute,
+code .tag,
+code .tag.attribute,
+code .tag.delimiter,
+code .annotation {
+  color: var(--attribute);
+}
+
+/* Built-in functions/constants */
+code .builtin,
+code .macro,
+code .preprocessor,
+code .directive {
+  color: var(--macro);
+}
+
+/* Special syntax elements */
+code .error {
+  color: var(--comment);
+  text-decoration: underline;
+  text-decoration-color: var(--constant);
+}
+
+code .emphasis {
+  color: var(--keyword);
+  font-style: italic;
+}
+
+code .strong {
+  color: var(--keyword);
+  font-weight: bold;
+}
+
+/* Language-specific elements that map to unified categories */
+code .instruction,      /* assembly instructions -> keywords */
+code .register,         /* assembly registers -> variables */
+code .label,            /* labels -> functions */
+code .directive,        /* directives -> macros */
+code .exception,        /* exceptions -> keywords */
+code .include,          /* includes -> keywords */
+code .preprocessor,     /* preprocessor -> macros */
+code .define,           /* defines -> macros */
+code .conditional,      /* conditionals -> keywords */
+code .repeat,           /* loops -> keywords */
+code .storage,          /* storage modifiers -> keywords */
+code .boolean,          /* booleans -> constants */
+code .null,             /* null -> constants */
+code .delimiter,        /* delimiters -> punctuation */
+code .bracket,          /* brackets -> punctuation */
+code .brace,            /* braces -> punctuation */
+code .parenthesis {     /* parentheses -> punctuation */
+  color: inherit;
+}
+
+
+/* Apply unified styling based on semantic meaning */
+code .instruction { color: var(--keyword); }
+code .register { color: var(--variable); }
+code .label { color: var(--function); }
+code .directive { color: var(--macro); }
+code .exception { color: var(--keyword); }
+code .include { color: var(--keyword); }
+code .conditional { color: var(--keyword); }
+code .repeat { color: var(--keyword); }
+code .storage { color: var(--keyword); }
+code .boolean { color: var(--constant); }
+code .null { color: var(--constant); }
+code .delimiter,
+code .bracket,
+code .brace,
+code .parenthesis { color: var(--punctuation); }
+

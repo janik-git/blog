@@ -1,6 +1,7 @@
 Site {
     .title = "Personal blog",
-    .host_url = "https://janik-git.github.io/blog",
+    .host_url = "https://janik-git.github.io",
+    .url_path_prefix ="blog",
     .content_dir_path = "content",
     .layouts_dir_path = "layouts",
     .assets_dir_path = "assets",
