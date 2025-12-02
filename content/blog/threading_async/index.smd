@@ -188,8 +188,8 @@ int main(){
     while (1){
         if (!queueEmpty(&task_list)){
             Task task = queuePop(&task_list);
-            int completed = task.run(task.context);
-            if (!completed && !queueFull(&task_list)){
+            int notcompleted = task.run(task.context);
+            if (notcompleted && !queueFull(&task_list)){
                 queuePush(&task_list,task);
             }
         }
