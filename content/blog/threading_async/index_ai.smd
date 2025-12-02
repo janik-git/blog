@@ -1,0 +1,145 @@
+---
+.title = "A mental model for understanding parallel concepts",
+.date = @date("2025-11-29T00:00:00"),
+.author = "Janik ",
+.layout = "post.shtml",
+.draft = false,
+--- 
+The biggest issue I faced when trying to understand asynchronous code was how it was possible for a function to stop or yield when encountering an `await` on a future that couldn't progress.
+
+Conceptually I understood that an `await fn` gets translated into some state machine and it somehow manages to resume by proceeding through the steps. But that is more accepting that it somehow works, not a true understanding that would let me implement it myself.
+
+The first moment of real understanding came when researching how to do something similar in C, and I came across [Duff's device](https://en.wikipedia.org/wiki/Duff%27s_device).
+```c
+    register n = (count + 7) / 8;
+    switch (count % 8) 
+    {
+    case 0: do { *to = *from++;
+    case 7:      *to = *from++;
+    case 6:      *to = *from++;
+    case 5:      *to = *from++;
+    case 4:      *to = *from++;
+    case 3:      *to = *from++;
+    case 2:      *to = *from++;
+    case 1:      *to = *from++;  
+            } while (--n > 0);
+    }
+```
+Whenever `count` is not a multiple of 8, it simply jumps to the correct start of the iteration to handle any potential remainder and otherwise proceeds as normal.
+
+Duff's device leverages the fact that in C switch statements the following properties hold:
+- A case label can prefix any sub‑statement within the switch's body, as long as the body as a whole is a valid statement.
+- Execution will fall through the case statements until it encounters a break or the switch ends.
+
+Before proceeding, let a coroutine be any function that can be suspended and resumed.
+Using Duff's device we can then implement a simple coroutine as follows:
+```c
+int co(){
+    static int i, state = 0;
+    switch (state) {
+        case 0:
+        for (i = 0; i < 10; ++i){
+            state = 1;
+            return i;
+            case 1:;
+        }
+    }
+}
+```
+Source: [https://www.chiark.greenend.org.uk/~sgtatham/coroutines.html](https://www.chiark.greenend.org.uk/~sgtatham/coroutines.html)
+
+What you should notice is that if you want some local variable to survive suspension, it has to be explicitly saved. In the example above we simply declared it as static, but in practice we would save any local state inside a context struct and pass it to the coroutine:
+```c
+struct Context; 
+// Access persistent variables with ctx->var
+int co(Context *ctx);
+```
+# Context
+For me, context is the most important attribute to distinguish and understand different parallel constructs. By looking at what context they require to function, we can easily differentiate between different types.
+
+## Stackful vs Stackless
+When talking about coroutines people generally differentiate between stackful‑coroutines (fibers) and stackless‑coroutines. Without going into any pros or cons, we can reduce their difference to the fact that a stackful coroutine will include a stack as part of its context:
+```c
+struct Context {
+    void *stack;
+    // rest
+};
+```
+while a stackless coroutine does not.
+This difference is what makes stackless coroutines cheaper compared to stackful ones since they require less space.
+
+## Threads vs. Processes
+Once again to distinguish threads from processes we can reduce the two to their differences in **context**. A process, for example, has its own virtual address space, while threads within a process share a common virtual address space.
+This means we don't have to save any information relating to that, such as the page table, when swapping between threads within a process.
+
+>[]($block.attrs('note'))
+>The exact context used for processes and threads can be found by taking a look into `include/linux/sched.h` and finding the `task_struct`. 
+>
+>Processor‑specific information, like the `thread_struct`, can be found in `arch/*/include/asm/processor.h`.
+
+## GPU Threads vs. CPU Threads
+Why is it that a GPU can run thousands of threads at the same time, while a CPU is limited to a small number of threads? One core difference is where they store the context required for each thread. GPUs feature large register files into which thread contexts are saved. Switching between different threads is then as simple as pointing to the relevant registers and is much faster than loading them from memory like on the CPU.
+
+Another obvious difference is the number of execution units, which allow many more instructions to be processed at the same time. But if one wanted to, they could also run multiple “threads” on one CPU core at the same time by:
+- Sharing a stack among all threads.
+- Limiting the context of each thread to one or two registers.
+
+It is simply a matter of perspective whether
+```c
+int acc1 = 0;
+int acc2 = 0;
+for (int i = 0 ; i < 2*n ; i+= 2){
+    acc1 += A[i];
+    acc2 += A[i+1];
+}
+```
+is one thread performing two adds at a time, or if we have two “threads” each with one register `acc` performing one add at a time.
+
+I know this is really stretching the definition of what a thread is, hence the quotes, but I believe the point I am trying to make is clear.
+
+To summarize:
+>[]($block.attrs('theorem'))
+>Parallel constructs can be differentiated by examining the type of context they need to execute. Their functionality is limited by the context they have.
+
+# Spinning
+
+The next part that was never quite clear to me is what the `async` function even yields to. A lot of `async` implementations hide the underlying mechanism of how `async` functions get run/scheduled. In Rust, for example, you import tokio, declare your new async main, and somehow it all works out.
+
+The reality is that what is abstracted away from you is some thread pool / scheduler that is responsible for picking tasks to run, assigning them to some underlying kernel thread, and, if necessary, putting them back into the queue if the task didn't run to completion.
+
+And without spinning, none of this would be possible. What I mean by that is that as long as you keep peeling away layers of abstraction, you eventually reach an endless loop that will spin while waiting for some condition. Whether that is the *tokio* thread pool checking for new tasks, or the Linux scheduler trying to schedule different threads—they are both spinning and waiting on some condition.
+
+There is no magic behind the scenes that somehow knows when it can do work and simply turns itself off otherwise. At some layer there is at least one component that has to continuously check.
+
+# What this all means
+
+We can combine the two concepts of **context** and **spinning** and cobble together a simple async runtime. We use a general task type made up of an opaque context and a run function, make them available for scheduling by putting them onto a central array and just spin, waiting for new tasks.
+```c
+typedef struct Task {
+    // Context required by the task
+    void *context; 
+    // Returns 1 if it needs to be scheduled again and otherwise 0 
+    int (*run)(void *);
+} Task;
+
+int main(){
+    // Some task queue with some fixed capacity
+    TaskQueue task_list; 
+    while (1){
+        if (!queueEmpty(&task_list)){
+            Task task = queuePop(&task_list);
+            int completed = task.run(task.context);
+            if (!completed && !queueFull(&task_list)){
+                queuePush(task);
+            }
+        }
+    } 
+}
+```
+This shouldn't be considered a working example, but if you start looking at real implementations of thread pools, you will find some semblance of the above.
+You can consider taking a look at [https://github.com/kprotty/zap](https://github.com/kprotty/zap), which even comes with its own blog post explaining how it works.
+
+## References
+- [https://en.wikipedia.org/wiki/Duff%27s_device](https://en.wikipedia.org/wiki/Duff%27s_device)
+- [https://www.chiark.greenend.org.uk/~sgtatham/coroutines.html](https://www.chiark.greenend.org.uk/~sgtatham/coroutines.html)
+- [https://github.com/kprotty/zap](https://github.com/kprotty/zap)

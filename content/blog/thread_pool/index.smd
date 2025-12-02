@@ -3,13 +3,13 @@
 .date = @date("2025-11-29T00:00:00"),
 .author = "Janik ",
 .layout = "post.shtml",
-.draft = false,
+.draft = true,
 --- 
 The goal is to write a simple threadpool in `C` onto which we 
 can schedule arbitrary tasks. Our high level functionality should look 
 something like this:
 ```c
-# Distribute tasks among workers
+// Distribute tasks among workers
 schedule(tasks):
 
 workerThread():
@@ -20,15 +20,21 @@ workerThread():
         wait()
 ```
 We are going to work based off some baseline assumption:
->[]($block.attrs('ass'))
->(Assumption One-to-One):
+>[]($block.attrs('assumption'))
+> #  (Assumption One-to-One):
+>On a system with `N` cores, the threadpool has at most `N` workers and at most `N`
+>tasks will be scheduled at once.
+
+Test
+
+>[]($block.attrs('note'))
 >On a system with `N` cores, the threadpool has at most `N` workers and at most `N`
 >tasks will be scheduled at once.
 
 This allows us to ignore any complex run queue management and focus on 
 understanding some base level concepts. Tasks can be simply defined 
 as two opaque pointers to a `context` and a `run` function: 
-```c
+```zig
 struct Task {
     void *context;
     void (*run)(void *);
@@ -40,6 +46,7 @@ struct Worker {
     pthread_t id;
     Task *task;
 }
+```
 Lets try to use this simple interface to make our threadpool, which we simply 
 model as an array of workers, do some work:
 ```c

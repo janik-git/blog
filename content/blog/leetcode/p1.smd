@@ -3,7 +3,7 @@
 .date = @date("2025-11-29T00:00:00"),
 .author = "Janik ",
 .layout = "post.shtml",
-.draft = false,
+.draft = true,
 --- 
 This is the start of a series where I go through leetcode problems trying 
 to come up with a solution while not knowing anything about DSA.

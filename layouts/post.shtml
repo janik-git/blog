@@ -36,4 +36,14 @@
 			</a>
 		</div>
 	</div>
+<div id="footnotes" :if="$page.footnotes?()">
+    <ol :loop="$if">
+      <li id="$loop.it.def_id">
+        <ctx :html="$loop.it.html()"></ctx>
+        <ctx :loop="$loop.it.ref_ids">
+          <a href="$loop.it.prefix('#')" :html="$loop.idx"></a>
+        </ctx>
+      </li>
+    </ol>
+  </div>
 </body>

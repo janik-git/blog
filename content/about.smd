@@ -5,9 +5,8 @@
 .layout = "index.shtml",
 .draft = false,
 --- 
-I am a 26 year old university graduate with a masters in mathematics looking for a job.
-I enjoy digging deep into various topics related to programming and finding out 
-how they really work. 
+I am a 26 year old university graduate with a masters in mathematics looking currently looking for a job.
+I enjoy digging deep into various topics and finding out how they really work. 
 
-A anonymsed version of my cv can be found [here]($link.asset("cv.pdf")).
+A anonymized version of my cv can be found [here]($link.asset("cv.pdf")).
 

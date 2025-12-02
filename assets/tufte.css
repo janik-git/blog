@@ -1,66 +1,3 @@
-
-b,
-strong {
-  color: #fff;
-}
-
-a {
-  color: #eee;
-}
-
-html {
-  color: #ccc;
-  font-family: "Liga SFMono Nerd Font";
-  font-size: 1.2em;
-  display: flex;
-  flex-direction: row;
-  justify-content: center;
-  background-color: #111;
-}
-
-body {
-  width: 800px;
-  padding: 15px;
-  display: flex;
-  flex-direction: column;
-}
-
-.site-title {
-  font-size: 2.5em;
-  margin-bottom: 10px;
-  /* text-align: center; */
-}
-
-nav {
-  display: flex;
-  flex-direction: row;
-  justify-content: left;
-  font-size: 1.2em;
-  margin-bottom: 20px;
-}
-
-
-.small {
-  font-size: 0.8em;
-}
-
-.wave {
-  background: #111;
-  color: #fff;
-  text-shadow: 1px 1px 10px #fff, 1px 1px 10px #ccc;
-}
-
-footer {
-  margin-top: 30px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-footer hr {
-  width: 100%;
-}
-
 /* file: assets/tufte.css */
 
 /* --------------------------------------------------------------
@@ -77,16 +14,37 @@ footer hr {
   --margin-width: 35%;         /* Width of the right-hand side column */
   --main-max: 65%;             /* Width of the main column */
   --sidenote-gap: 1rem;
-  --theorem-bg: #161819;       /* Dark background for theorem boxes */
+  --theorem-bg: #1a1a1a;       /* Dark background for theorem boxes */
   --theorem-border: #61afef;   /* Blue border to match accent */
   --proof-bg: #2a2a2a;         /* Slightly different dark for proofs */
 }
 
+/* --------------------------------------------------------------
+   Layout container for Tufte-style content
+   -------------------------------------------------------------- */
+.tufte-layout {
+  display: grid;
+  grid-template-columns: 1fr var(--margin-width);
+  gap: var(--sidenote-gap);
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0;
+}
+
+.tufte-main {
+  grid-column: 1;
+}
+
+.tufte-aside {
+  grid-column: 2;
+  font-size: 0.95em;
+  color: var(--text-secondary);
+}
 
 /* --------------------------------------------------------------
    Block-level elements (theorems, proofs, exercises, etc.)
    -------------------------------------------------------------- */
-.block {
+blockquote.block {
   margin: 1.5rem 0;
   padding: 1rem;
   border-left: 4px solid var(--theorem-border);
@@ -95,45 +53,45 @@ footer hr {
 }
 
 /* Specific styles for different environment types */
-.block.theorem,
-.block.lemma,
-.block.definition,
-.block.corollary,
-.block.proposition {
+blockquote.block.theorem,
+blockquote.block.lemma,
+blockquote.block.definition,
+blockquote.block.corollary,
+blockquote.block.proposition {
   background: var(--theorem-bg);
   border-left-color: var(--theorem-border);
 }
 
-.block.exercise {
+blockquote.block.exercise {
   background: #2d1b2a;  /* Dark purple tint for exercises */
   border-left-color: #c678dd; /* Purple accent */
 }
 
-.block.proof {
+blockquote.block.proof {
   background: var(--proof-bg);
   font-style: italic;
   border-left-color: #56b6c2; /* Cyan accent for proofs */
 }
 
-/* .block.assumption, */
-.block.operation {
+blockquote.block.assumption,
+blockquote.block.operation {
   background: #1a2a1a;  /* Dark green tint */
   border-left-color: #98c379; /* Green accent */
 }
 
-.block.remark,
-.block.note {
+blockquote.block.remark,
+blockquote.block.note {
   background: #2a1a2a;  /* Dark magenta tint */
   border-left-color: #e06c75; /* Red accent */
 }
 
 /* Theorem title styling */
-.block h1,
-.block h2,
-.block h3,
-.block h4,
-.block h5,
-.block h6 {
+blockquote.block h1,
+blockquote.block h2,
+blockquote.block h3,
+blockquote.block h4,
+blockquote.block h5,
+blockquote.block h6 {
   margin-top: 0;
   margin-bottom: 0.8rem;
   color: var(--accent);
@@ -146,7 +104,7 @@ footer hr {
 /* --------------------------------------------------------------
    Sidenotes (converted from typst marginalia)
    -------------------------------------------------------------- */
-.block.sidenote {
+aside.sidenote {
   position: relative;
   float: right;
   width: var(--margin-width);
@@ -163,7 +121,7 @@ footer hr {
 }
 
 /* Small marker for sidenotes */
-.block.sidenote::before {
+aside.sidenote::before {
   content: "•";
   color: var(--accent);
   font-weight: bold;
@@ -207,12 +165,12 @@ figcaption {
 /* --------------------------------------------------------------
    Typography enhancements
    -------------------------------------------------------------- */
- h1,
- h2,
- h3,
- h4,
- h5,
- h6 {
+.tufte-layout h1,
+.tufte-layout h2,
+.tufte-layout h3,
+.tufte-layout h4,
+.tufte-layout h5,
+.tufte-layout h6 {
   font-family: "CMU Bright", sans-serif;
   font-weight: 100;
   text-transform: uppercase;
@@ -220,18 +178,18 @@ figcaption {
   color: var(--accent);
 }
 
-h1 {
+.tufte-layout h1 {
   font-size: 1.6rem;
   margin-bottom: 0.5rem;
 }
 
-h2 {
+.tufte-layout h2 {
   font-size: 1.3rem;
   margin-top: 1.2rem;
   margin-bottom: 0.4rem;
 }
 
-h3 {
+.tufte-layout h3 {
   font-size: 1.1rem;
   margin-top: 1rem;
 }
@@ -239,6 +197,29 @@ h3 {
 /* --------------------------------------------------------------
    Code blocks - maintain existing dark theme
    -------------------------------------------------------------- */
+pre {
+  background: #2d2d2d !important;
+  border: 1px solid #404040;
+  border-radius: 6px;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+code {
+  font-family: "BerkeleyMono Nerd Font", "CMU Bright", monospace;
+  background: #2d2d2d;
+  color: var(--text);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+
+/* Inline code */
+p code, li code {
+  background: #2d2d2d;
+  color: var(--text);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
 
 /* --------------------------------------------------------------
    Links - ensure consistency with existing theme
@@ -281,14 +262,37 @@ tr:hover {
   background: #2d2d2d;
 }
 
+/* --------------------------------------------------------------
+   Responsive design
+   -------------------------------------------------------------- */
+@media (max-width: 1024px) {
+  .tufte-layout {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  
+  .tufte-aside {
+    grid-column: 1;
+    margin-left: 0;
+    margin-right: 0;
+    width: 100%;
+  }
+  
+  aside.sidenote {
+    position: static;
+    float: none;
+    width: 100%;
+    margin: 1rem 0;
+  }
+}
 
- #footnotes p {
-   display: inline;
-   margin-right: 5px;
-
- }
-
- #footnotes,
- #footnotes code {
-   font-size: 0.8rem;
- }
+@media (max-width: 768px) {
+  .tufte-layout {
+    padding: 1rem;
+  }
+  
+  blockquote.block {
+    margin: 1rem 0;
+    padding: 0.8rem;
+  }
+}
