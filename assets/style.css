@@ -19,10 +19,18 @@ html {
 }
 
 body {
-  width: 800px;
   padding: 15px;
   display: flex;
   flex-direction: column;
+word-wrap: break-word;
+}
+
+/* Make body responsive */
+body {
+  width: 100%;
+  max-width: 800px;
+  padding: 15px;
+  box-sizing: border-box;
 }
 
 .site-title {
@@ -292,3 +300,28 @@ tr:hover {
  #footnotes code {
    font-size: 0.8rem;
  }
+
+/* Adjust sidenotes for mobile */
+@media (max-width: 768px) {
+  .block.sidenote {
+    float: none;
+    width: 100%;
+    margin: 1rem 0;
+    margin-right: 0;
+    margin-left: 0;
+  }
+
+  /* Optional: Adjust font sizes for mobile */
+  html {
+    font-size: 1em;
+  }
+
+  .site-title {
+    font-size: 2em;
+  }
+
+  nav {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+}

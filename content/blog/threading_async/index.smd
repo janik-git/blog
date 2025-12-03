@@ -99,18 +99,21 @@ when swapping between threads within a process.
 
 ## GPU Threads vs. CPU Threads
 Why is it that a GPU can run thousands of threads at the same time, while a CPU is limited 
-to a small few? One core difference is in where they store the context required to run each thread,
-GPU's feature large register files into which thread context is saved. Switching between different threads 
-is then as simple as pointing to the relevant registers and much faster than the process of loading them from memory 
-like on the CPU.
+to a small few? One core difference is the availability of a large amount of registers 
+on the GPU. This allows thread context to be stored in registers rather 
+than global memory like on the CPU.
+And Switching between different threads
+is then as simple as pointing to the relevant registers.
 
-Another obvious difference is the number of execution units which allow for many more instructions 
-to be processed at the same time. But if one wanted to, they could also run multiple "threads" on 
+While another obvious difference is the number of execution units available on the GPU 
+compared to the CPU, it isn't like the CPU doesn't have multiple execution units per core aswell.
+
+So if one wanted to we could also run multiple "threads" on 
 one CPU core at the same time by:
 - Sharing a stack among all "threads".
 - And limiting the context of each "thread" to one or two registers.
 
-It is simply a matter of perspective whether
+Whether:
 ```c
 
 int acc1 = 0;
@@ -120,16 +123,13 @@ for (int i = 0 ; i < 2*n ; i+= 2){
     acc2 += A[i+1];
 }
 ```
-is one thread performing two adds at a time, or if we have two "threads"
-each with one register `acc` performing one add at a time.
-
-I know this is really stretching the definition of what a thread is hence the quotes, but I believe the point I 
-am trying to make is clear.
+this is one thread performing two adds at the same time, or it is two "threads"
+each with one register `acc` performing one add at a time is just a matter of perspective.
 
 To summarize: 
 >[]($block.attrs('theorem'))
->Parallel constructs can be differentiated by examining what type of context 
->they need to execute, and their functionality is limited by
+>Different parallel constructs can be reduced to the type of context 
+>they require to execute, and their functionality is limited by
 > the context they have access to.
 
 # Spinning
@@ -138,21 +138,24 @@ The next part that was never quite clear to me, is what is the `async` function
 even yielding to. A lot of `async` implementations hide the underlying mechanism 
 of how `async` functions get run/scheduled. In rust for example you import tokio,
 declare your new async main and somehow it all works out.
+To me it seemed like there was some magic running in the background that knew exactly when 
+to pick a task back up the moment data arrived.
 
-The reality, is that what is abstracted away from you is some thread pool / scheduler 
-that is responsible for picking tasks to run, assigning them to some underlying 
-kernel thread and if necessary putting them back into the queue if the task didn't run 
-to completion. 
+The reality is, that what is abstracted away is some thread pool / userspace-scheduler 
+that is responsible for picking which tasks to run. They then assign them to some underlying 
+kernel thread and if necessary put them back into the queue if the task didn't run 
+till completion. 
 
-And without spinning, nothing of it would be possible. What I mean when I say that, 
-is that as long as you keep peeling away layer of abstraction, you eventually reach 
-an endless loop that will spin waiting for some condition.
+The core component that makes all of this work, ignoring everything else, 
+is the fact that there is some component that is spinning in an endless 
+loop, checking for some condition to be true.
 Whether that is the *tokio* thread pool checking for new tasks, or the linux scheduler looking 
-for new threads to schedule, at some layer something is spinning.
+for new threads to schedule, as long as you keep peeling away layers 
+of abstraction you will find something that is spinning.
 
 >[]($block.attrs('note'))
->The exact mechanics of how the scheduler works doesn't really matter for this point. 
->One can take a look at `linux/kernel/sched/idle.c` and find:
+>The exact mechanics of how the scheduler works don't really matter for this point. 
+>But one can take a look at `linux/kernel/sched/idle.c` and find:
 >```c 
 >void cpu_startup_entry(enum cpuhp_state state)
 >{
@@ -164,16 +167,16 @@ for new threads to schedule, at some layer something is spinning.
 >}
 >```
 
-There is no magic working behind the scenes, that somehow knows when it can do work and just 
-turns itself off otherwise. At some layer there is at least one component that has to occasionally 
-check whether there is something to do. 
+There is no zero cost magic that somehow knows when to do work and otherwise turns itself 
+off. And sure, relying on the kernel to tell us when work can be done is alot more 
+effective than doing it ourselves. But there is nothing wrong with spinning for a bit ourselves.
+
 
 
 # What this all means
 
-We can combine the two concepts of **context** and **spinning** and cobble together 
-a simple async runtime. We use a general task type made up of an opaque context and run function, 
-make them available for scheduling by putting them onto a central array and just spin waiting for new tasks.
+By simply combining the two concepts of **context** and **spinning** we can cobble together 
+a simple async runtime. 
 ```c
 typedef struct Task {
     // Context required by the task
@@ -182,9 +185,10 @@ typedef struct Task {
     int (*run)(void *);
 } Task;
 
+// Some task queue with some fixed capacity
+TaskQueue task_list; 
+
 int main(){
-    // Some task queue with some fixed capacity
-    TaskQueue task_list; 
     while (1){
         if (!queueEmpty(&task_list)){
             Task task = queuePop(&task_list);
@@ -196,11 +200,25 @@ int main(){
     } 
 }
 ```
-This shouldnt be considered a working example, but if you start looking 
-at real implementations of thread pools, you will find some semblance of the above.
-You can consider taking a look at 
+[^1]
+
+But thinking about things in terms of their **context**, has uses beyond scheduling.
+Turning a recursive function into an iterative one for example, can be done 
+by explicitly packaging up the function together with the context it needs 
+and pushing them onto our own stack. How complicated that stack needs to be, 
+simply depends on what context the function needs.
+
+
+
+[^1]: This shouldnt be considered a working example, if you want to look 
+at real implementations of thread pools I recommed 
 [https://github.com/kprotty/zap](https://github.com/kprotty/zap)
 which even comes with it's own blog post explaining how it works.
+And if you look close enough, you will find both our Task struct 
+and a spinning loop
+
+
+
 
 
 ## References: 
