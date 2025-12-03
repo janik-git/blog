@@ -20,6 +20,7 @@
 	</style>
 </head>
 <body id="body">
+<div id="content" class="foo">
 	<h1 :text="$page.title"></h1>
 	<div class="post" :html="$page.content()"></div>
 	<div id="prev-next">
@@ -45,5 +46,6 @@
         </ctx>
       </li>
     </ol>
+  </div>
   </div>
 </body>
