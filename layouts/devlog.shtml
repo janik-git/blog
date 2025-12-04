@@ -33,6 +33,8 @@
 	</style>
 </head>
 <body id="body">
+
+<div id="content" class="foo">
 	<h1 class="title" :text="$page.title"></h1>
 	<div :html="$page.contentSection('about')"></div>
 	<div class="feed" :loop="$page.contentSections().slice(1)">
@@ -41,5 +43,6 @@
 			<h2><a href="$loop.it.id.prefix('#')" :html="$loop.it.heading()"></a></h2>
 			<ctx :html="$loop.it.htmlNoHeading()"></ctx>
 		</div>
+	</div>
 	</div>
 </body>
