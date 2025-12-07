@@ -1,0 +1,115 @@
+---
+.title = "",
+.date = @date("2025-11-29T00:00:00"),
+.author = "Janik ",
+.layout = "post.shtml",
+.draft = true,
+--- 
+
+Most leetcode problems can be considered under the perspective of search problems.
+No matter the problem description or the solution technique, we can view them 
+as a method of navigating the search space. Most of these problems 
+come with very easy naive solution that tend to be too inefficient in space or time.
+
+The way to progress is to think about either finding a way to more efficently navigate the search space 
+or is to prune the search space so it contains less irrelevant paths. Dynamic programming problems 
+often present thesmelves as finding some optimal value. Getting that optimal value requires us to make 
+an optimal desicion at each time step, with the added difficulty that what we do now depends on what we do later.
+
+To solve this, it helps to clearly formulate the search space you are moving in and how you can navigate it.
+The search space in optimal policy problems is spanned up by all the possible applicable controls, that is the 
+sequences of desicions we can make at every time step and state.
+
+We readily get a 2 dimensional matrix of time and state, this is coupled with a transition function which dictates 
+how we can transition from one state or the other. Take for example the problem of finding the optimal trading strategy 
+with at most `k` transactions given an array of prices. Our transition function is formulated as follows:
+
+Our current state is given by, either holding stock or not holding stock. If we are holding stock in $t-1$ then we can 
+transition to either holding stock, by doing nothing, or not holding stock by selling. Since we want to limit the number of transactions,
+we add incorporate this into our state space, note that his makes our state space far larger than before.
+
+When implementing this, is reflected in the size of your `dp` table storing all the state informations. Just the 
+states thesmelves are not very useful, so we attach a value or cost function to the state, or rather the transition into a 
+state. A policy will now draw a path through all valid states and carry a value into each state, depending on the transitions it took.
+
+Depending on the problem it may be possible for multiple paths to exist to reach the same state, in those cases you'd need a seperate table to 
+track this. Usually though we are only interested in finding a policy that behaves a certain way, cost minimizing or value maximizing.
+In those cases we can make an informed decision on how our policy will navigate the space. An optimal policy will try to make 
+an optimal decision in each and every state. The path our policy must take can be fixed by either fixing its beginning 
+or fixing its end state. In the stock example, this means we fix the final state by calculating the value  associated with each state.
+That is, we fill in one row of our `dp` table and proceed backwards. At $T-1$ we consider for each state our possible transactions,
+we buy, we sell, or we do nothing. Note how we do not need to know whether our optimal policy has already bought previously to sell since 
+we can simply incorporate this information into our state space, just like we included the number of transactions. For each state 
+we thus simply fill in the optimal decision based on the possible transitions we can make till we reach $t=0$. 
+
+The optimal policy is then given based on our intial condition, do we have stock? how many transactions are left and so on.
+
+We can also navigate our search space from the front, but our interpretation must change. We instead think 
+about what is the cheapest way to get to the next state. We fix our intial state and proceed, it is important to 
+remember that we are not traversing along one singular path. We are calculating the value for all possible paths 
+under our policy, Consider for example $t < T$, then for each possible state, that is $j <= k$ (Transactions left) and $i \in \{0,1\}$ (Are we holding stock or not)
+the value in those states is determined by the value of all valid prior states $t-1$. To be in state $(t,k,0)$ for example means we could only have 
+come from $(t-1,k,0)$. While in $(t,k-1,1)$ means we couldve come from $(t-1,k-1,1)$, or $(t-1,k,0)$ (we bought) and so on.
+```python
+
+    def maxProfitForward(self, k, prices):
+        n = len(prices)
+        dp = [[[-(1 << 18), -(1 << 18)] for _ in range(k + 1)] for _ in range(n)]
+
+        dp[0][k][0] = 0
+        dp[0][k][1] = -prices[0]
+        # all other states are invalid according to our definition
+
+        for i in range(1, n):
+            # # dp[i][k][0] = 0
+            # # Explicitly write it out: 
+            # # To get here, we either sold 
+            # # Or we did nothing,
+            # dp[i][0][0] = max(dp[i-1][0][0],dp[i-1][1][1] + prices[i-1])
+            # # To get here, we either did nothing and were already holding, or we bought
+            # dp[i][0][1] = max(dp[i-1][0][1],dp[i-1][0][0] - prices[i-1])
+            #
+            # # Same story here, either we did nothing or we sold
+            # dp[i][1][0] = max(dp[i-1][1][0],dp[i-1][2][1] + prices[i-1])
+            # # To get here, we either did nothing and were already holding, or we bought
+            # dp[i][1][1] = max(dp[i-1][1][1],dp[i-1][1][0] - prices[i-1])
+
+
+            dp[i][k][1] =  max(dp[i-1][k][1],dp[i-1][k][0] - prices[i])
+            dp[i][k][0] =  dp[i-1][k][0]
+            for j in range(k): 
+
+                dp[i][j][0] =  max(dp[i-1][j][0],dp[i-1][j+1][1] + prices[i])
+                dp[i][j][1] =  max(dp[i-1][j][1],dp[i-1][j][0] - prices[i])
+        sol = max([x for xs in dp[-1] for x in xs])
+        return dp
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

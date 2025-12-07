@@ -5,7 +5,4 @@
 .layout = "devlog-archive.shtml",
 .draft = false,
 --- 
-
-This page lists all the devlog years that are present on this site.
-Note how the top navigation menu doesn't link to this page, but instead links
-to the latest devlog year directly.
+Colection of short form notes, not organized.

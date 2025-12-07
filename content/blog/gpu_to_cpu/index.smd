@@ -1,0 +1,110 @@
+---
+.title = "GPU to CPU transpilation",
+.date = @date("2025-11-29T00:00:00"),
+.author = "Janik ",
+.layout = "post.shtml",
+.draft = true,
+--- 
+These are notes made while reading the paper [High-Performance GPU-to-CPU Transpilation and Optimization via High-Level Parallel Constructs](https://arxiv.org/pdf/2207.00257).
+
+They use Multi-Level Intermediate Representation to transform GPU code into CPU code. 
+GPU kernels are represented using the following : 
+    - A 3D parallel for-loop over alls blocks in the grid.
+    - A stack allocation for any shared memory,scopted to be unique per block.
+    - A 3D parallel for-loop over all threads in a block.
+    - A custom barrier to provide equivalent semantics to a CUDA/ROCm synchronization.
+
+
+Note that while threads generally have their own stack, being in the same virtual address 
+space (owned by the process) doesn't (shouldn't?)  prevent threads from holding pointers 
+into the stack of another thread.
+
+Generally the idea is, to take a cuda kernel as:
+```c
+__device__ float sum(float *data, int n);
+__global__ void normalize(float *out, float *in, int n){
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    __shared__ float val;
+    if (tid) == 0 {
+        val = sum(in,n);
+    }
+    __syncthreads();
+
+    if (tid < n) {
+        out[tid] = in[tid] / val;
+    }
+}
+```
+(Taken directly from the paper).
+The kernel itself is then represented as as 
+```c
+%shared_val = alloca : float;
+parallel for (%tx,%ty,%tz) = (0,0,0) to (blk.x,blk.y,blk.z) {
+    if %tx == 0 {
+        %sum = call @sum(%in,%n);
+        store %shared_val,%sum;
+    }
+    barrier(%tx,%ty,%tz)
+    %tid = ...
+
+    if %tid < %n {
+        %res = ... 
+        store %d_out[%tid],res;
+    }
+}
+```
+The parallel for transformation is clear, the more interesting parts of the paper 
+are how to actually implement the barriers. Note that without any synchronization
+needed the problem is not really interesting to solve.
+
+The barrier they use, doesn't prevent code from crossing the barrier 
+and only seeks to prevent transformation that would change externally visible behaviour.
+That is, it just aimst to keep memory view in sync.
+
+In my understanding CPU memory barriers don't really force a consistent memory view.
+Although I guess by explicit store buffer flushing we should mostly achieve the same effect ?
+Still presents the opportunity for one thread to race ahead, so not sure here. Probably 
+need proper barrier synchronizations.
+
+
+What I found interesting, is that the first transformation they talk about, *Barrier Lowering*
+involves splitting `parallel for` loops into two segments. This creates 
+producer consumer semantics: 
+```
+%x_cache = memref<10xf32>
+%y_cache = memref<10xf32>
+parallel %i = 0 to 10 {
+    %x = load data[%i]
+    %y = load data[2 * %i]
+    store %x, %x_cache[%i]
+    store %y, %y_cache[%i]
+    } 
+parallel %i = 0 to 10 {
+    %x = load %x_cache[%i]
+    %y = load %y_cache[%i]
+    %a = fmul %x, %y
+    %b = fsub %y, %z
+    call @use(%a, %b) 
+    ... 
+    } 
+```
+Something that is also popular in writing cuda kernels, where we have specialized 
+warps that produce or consume. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

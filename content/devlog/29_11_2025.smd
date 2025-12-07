@@ -247,6 +247,174 @@ threadcount indicates how many threads the new barrier must wait on.
 
 
 
+##  Low bit dtypes, quantization
+https://www.youtube.com/watch?v=3qNZvvlwcCI&t=156s
+
+Scaling factors per row cheap, that is per row, column in dot product.
+But can lead to large outliers zeroing complete areas.
+
+Scaling factors per smaller blocks more expensive without 
+hardware support, but better encoding and outliers dont 
+kill as many other values. Plus the required dynamic range is lower 
+because the scale factor can handle more.
+
+
+OCP MX Block Formats
+https://en.wikipedia.org/wiki/Block_floating_point
+
+
+
+
+
+## Polyhedral Framework 
+This is a way to represent nested loops as points in a d dimensional space. 
+d is the number of nested loops, loop dependencies can be represented 
+by lines between the points. The faces/bounds are determined by the loop bounds 
+for each loop. We can apply affine transformations,preserve the dependencies,
+onto the indicies to change the processing order and significantly improve performance.
+For example:
+```c
+for (i = 0 ; i < N ; ++i){
+    for (j = 0 ; j < M; ++j){
+        A[i+1][j+1] = f(A[i][j])
+    }
+}
+```
+can be visualized as a two dimensional space, there are lines 
+from points $(i,j)$ to points $(i+1,j+1)$. This means if we want to parallelize 
+the inner loop, in `j`, we have to synchronize after every iteration.
+When we attempt to parallelize nested loops, each loop level presents 
+an opportunity to distribute its iteration to different threads.
+If we parallelize `i`, then each thread performs:
+```c
+    for (j = 0 ; j < M; ++j){
+        A[i+1][j+1] = f(A[i][j])
+    }
+```
+for `j` each thread exectues one `A[i+1][j+1] = f(A[i][j])`. We essentially 
+traverse the coordinate system along one of its axis, each thread gets assigned 
+one point on this axis and traverses the other axis according to some transformation.
+
+For example parallelizing in `i` means each point on the `i` axis corresponds to one 
+thread and we could try to traverse `j` with an idenity mapping i.e. `(i,j) -> (j)` 
+which will obviously not work because of our inter loop dependency. 
+
+The only valid parallelization ,that don't require synchronization, are those that follow 
+the paths `(1,1)`. We seek now to find an affine transformation, that gives us a `(1,0)` or `(0,1)`
+dependency. These type of dependencies are restricted to one axis, leaving the other free 
+to be parallelized. In our case we can transform `(i,j) -> (i-j,j)` which yields `(0,1)` dependencies.
+Although `(i,j) -> (i,j-i)` is prefectly valid as well. the first one will shift our iteration 
+space to `(-M+1 : N-1)` and `(0:M-1)`, all dependencies now point perfectly up, `(0,1)`
+This means we can assign each point on the `i` axis to one thread. The new loop structure is now: 
+```c
+for (ti = -M + 1 ; i < N ; ++i){
+    for (tj = max(0,-ti) ; j < min(M-1,N-1,-ti); ++tj){
+        A[ti+tj+1][tj+1] = f(A[ti+tj][tj])
+    }
+}
+```
+The array indicies can be derived by transforming `(i-j,j) -> (i,j)`, where `ti = i-j` and `tj = j`.
+### TODO: Make plots
+
+Any dependencies with a 0 in the vector can be parallelized perfectly, since this means no dependencies 
+exists for that dimension. Among the class of affine transformations are scaling ones,
+`(i,j,0,0) -> (a * i,b * j,i,j)`, these encompass tiling transformations on loops. 
+Visually the above transformation creates 2d tiles of points of width `1/a` and height `1/b`,
+the tiling is sensible, as long as no cyclic dependencies exist between the tiles. A 
+sufficient condition is if all dependencies are non-negative along the dimensions
+that are being tiled. 
+
+Sensible here means, that tiles can actually be distributed among different threads.
+Consider the dependencies `(1,0),(1,1),(1,-1)`, or : 
+```c
+for (i=0; i < N-1 ;++i){
+    for (j=1; j < M-1 ; ++j ){
+        A[(i+1)][j] = f(A[i][j-1],A[i][j],A[i][j+1])
+    }
+}
+```
+### TODO: Make plots
+
+Visually a point `(i,j)`, with `i>1,j>1` has ingoing edges coming from `(i-1,j)`,`(i-1,j-1)` and 
+`(i-1,j+1)`, for the outgoing edges just change the signs. This yields the dependencies `(1,0),(1,1),(1,-1)`,
+tiling naively along `j` is going to create dependency chains which we cannot resolve. 
+We first need to eliminate this dependency through a different transformation that eliminates 
+this negative dependency. Similar to before we can use `(i,j) -> (i,i+j)`, transforming 
+our dependencies from `(1,0),(1,1),(1,-1) -> (1,1),(1,2),(1,0)` allowing us to tile 
+along both `ti` and `tj` where `ti = i` and `tj = i+j`. 
+
+These transformations can be nested to create arbitrary complex patterns, for example:
+`(i,j) -> (i/2 + (i+j)/2,(i+j)/2,i,i+j)` to understand what this transformation does, 
+it is easiest to break it down into individual steps: 
+- First we skew `(i,j) -> (i,i+j)`
+- Rename to `(i2,j2)`
+- Tile `(i2,j2) -> (i2/64,j2/64,i2,j2)`
+- Rename to `(ti1,tj2)`
+- Skew `(ti1,tj2) -> (ti1 + tj2, tj2)`
+
+Consider for example the dependencies `(1,0),(1,1),(1,-1)` then each step transforms the 
+dependencies as follows: 
+- Skew: `(1,0),(1,1),(1,-1) -> (1,1),(1,2),(1,0)`
+- Tiling: For the tiling we can consider two levels 
+    the point level, then our dependencies stay unchanged. 
+    Or the tile level, this means we consider our boundary points 
+    and how the point dependencies translate into tile dependencies.
+    Dependecies such as `(1,1),(1,0),(0,1)` stay unchanged as boundary 
+    points will cause them to carry over into neighbouring tiles.
+    Dependecies that skip points such as `(1,2)` do change since we 
+    need to determine how many tiles this points into. So for 
+    every boundary point we need to check how many tile dependencies we get.
+
+    At minimum we always get 1, i.e. `(1,2)` will always result in at least 
+    `(1,1)` and additionaly `(0,1)`.
+
+### Todo need better formula for this one
+
+So we now have dependencies `(1,1),(1,0),(0,1)`, the final skew results in
+`(1,1),(1,0),(0,1) -> (2,1),(1,0),(1,1)`. Why do this ? 
+Before we couldn't parallelize in either tile dimension because 
+in `j` we had the `(0,1)` dependency, `j+1` depends on `j` ,meaning we have to compute 
+the tiles one after the other: 
+### Insert pic here
+Look at the dependency going from bottom to top.
+In `i` we had the `(1,0)` dependency, meaning `i+1` depends on `i`.
+
+After the transformation we eliminated the direct dependency of 
+`j+1` on `j` for fixed `i` and instead shifted that burden into the next 
+iteration. This means for fixed `i` we can somewhat parallelize `j`.
+### Check here again.
+
+
+
+
+Dependency wise this doesn't seem to perform any meaningful transformation 
+in the sense that we can now perfectly parallelize (no zero dimension), but 
+it arranges our dependencies in a way where they all progress in the same direction
+in the form of a wave. 
+
+Looking 
+at a visulization of this loop, draw the iteration space as a 2d grid with points at 
+$(i,j) < (N,M)$, we see 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
