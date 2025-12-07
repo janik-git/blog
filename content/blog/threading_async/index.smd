@@ -132,7 +132,7 @@ To summarize:
 >they require to execute, and their functionality is limited by
 > the context they have access to.
 
-# Spinning
+# No Free Lunch
 
 The next part that was never quite clear to me, is what is the `async` function 
 even yielding to. A lot of `async` implementations hide the underlying mechanism 
@@ -169,7 +169,7 @@ of abstraction you will find something that is spinning.
 
 There is no zero cost magic that somehow knows when to do work and otherwise turns itself 
 off. And sure, relying on the kernel to tell us when work can be done is alot more 
-effective than doing it ourselves. But there is nothing wrong with spinning for a bit ourselves.
+effective than doing it ourselves. But it is not free nontheless.
 
 
 
