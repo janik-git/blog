@@ -235,11 +235,13 @@ The sequence of operations performed by each thread is captured as program order
 8.9.1. Program Order
 
 The program order relates all operations performed by a thread to the order in which a sequential processor will execute instructions in the corresponding PTX source. It is a transitive relation that forms a total order over the operations performed by the thread, but does not relate operations from different threads.
-```
+
+Ref
 [https://forums.developer.nvidia.com/t/preventing-ptxas-from-reordering-instructions/28682/13](https://forums.developer.nvidia.com/t/preventing-ptxas-from-reordering-instructions/28682/13)
 
 
-`bar.arrive $barnum $threadcount`, bar.arrive can be used to reset a barrier, and thus 
+`bar.arrive $barnum $threadcount`
+, bar.arrive can be used to reset a barrier, and thus 
 threadcount indicates how many threads the new barrier must wait on.
 
 
